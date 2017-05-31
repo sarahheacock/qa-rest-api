@@ -2,46 +2,76 @@
 
 var express = require("express");
 var router = express.Router();
+var Question = require("./models").Question;
+
+router.param("qid", function(req, res, next, id){
+  Question.findById(id, function(err, doc){
+    if(err) return next(err);
+    if(!doc){
+      err = new Error("Not Found");
+      err.status = 404;
+      return next(err);
+    }
+    req.question = doc;
+    return next();
+  });
+});
+
+router.param("aid", function(req,res,next,id){
+  req.answer = req.question.answers.id(id);
+  if(!req.answer){
+    err = new Error("Not Found");
+    err.status = 404;
+    return next(err);
+  }
+  next();
+});
 
 router.get("/", function(req, res){
-  res.json({response: "You sent me a GET request"});
+  Question.find({})
+    .sort({createdAt: -1})
+    .exec(function(err, question){
+      if(err) return next(err);
+      res.json(question);
+    });
 });
 
-router.get("/:qid", function(req, res){
-  res.json({
-    response: "You sent me a GET request for an ID" + req.params.qid,
+router.post("/", function(req, res, next){
+  var question = new Question(req.body);
+  question.save(function(err, question){
+    if(err) return next(err);
+    res.status(201);
+    res.json(question);
   });
 });
 
-router.post("/", function(req, res){
-  res.json({
-    response: "You sent me a POST request",
-    body: req.body
-  });
+router.get("/:qid", function(req, res, next){
+  res.json(req.question);
 });
 
-router.post("/:qid/answers", function(req, res){
-  res.json({
-    response: "You sent me a POST request to /answers",
-    questionID: req.params.qid,
-    body: req.body
+
+router.post("/:qid/answers", function(req, res, next){
+  req.question.answers.push(req.body);
+  req.question.save(function(err, question){
+    if(err) return next(err);
+    res.status(201);
+    res.json(question);
   });
 });
 
 router.put("/:qid/answers/:aid", function(req, res){
-  res.json({
-    response: "You sent me a PUT request to /answers",
-    questionID: req.params.qid,
-    answerID: req.params.aid,
-    body: req.body
+  req.answer.update(req.body, function(err,result){
+    if(err) return next(err);
+    res.json(result);
   });
 });
 
-router.delete(":/qid/answers/:aid", function(req, res){
-  res.json({
-    response: "You sent me a DELETE request to /answers",
-    questionID: req.params.qid,
-    answerID: req.params.aid,
+router.delete("/:qid/answers/:aid", function(req, res){
+  req.answer.remove(function(err){
+    req.question.save(function(err, question){
+      if(err) return next(err);
+      res.json(question);
+    });
   });
 });
 
@@ -52,14 +82,14 @@ router.post("/:qid/answers/:aid/vote-:dir", function(req, res, next){
       next(err);
     }
     else {
+      req.vote = req.params.dir;
       next();
     }
-  }, function(req, res){
-    res.json({
-      response: "You sent me a POST request to /vote-" + req.params.dir,
-      questionID: req.params.qid,
-      answerID: req.params.aid,
-      vote: req.params.dir
+  },
+  function(req, res, next){
+    req.answer.vote(req.vote, function(err, question){
+      if(err) return next(err);
+      res.json(question);
     });
 });
 
